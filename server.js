@@ -247,7 +247,7 @@ async function sendProgramEmail(to, programId, programTitle) {
         //  Например: './files/program.xlsx'
         // ────────────────────────────────────────
         filename: 'armwrestling-program.xlsx', // имя файла для получателя
-        path: path.join(__dirname, 'files', 'program.xlsx'), // ПУТЬ К ВАШЕМУ ФАЙЛУ
+        path: path.join(__dirname, 'files', `${programId}.xlsx`), // ПУТЬ К ВАШЕМУ ФАЙЛУ
       },
     ],
   });
