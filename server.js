@@ -2,8 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const axios = require('axios');
-const nodemailer = require('nodemailer');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -22,16 +22,8 @@ const BASE_PRICE = 1249;
 const YUKASSA_SHOP_ID  = process.env.YUKASSA_SHOP_ID;
 const YUKASSA_SECRET   = process.env.YUKASSA_SECRET;
 const EMAIL_FROM       = process.env.EMAIL_FROM;
-const EMAIL_PASSWORD   = process.env.EMAIL_PASSWORD;
+const BREVO_API_KEY    = process.env.BREVO_API_KEY;
 const SITE_URL         = process.env.SITE_URL || 'http://localhost:3000';
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: EMAIL_FROM,
-    pass: EMAIL_PASSWORD,
-  },
-});
 
 app.get('/api/promo', (req, res) => {
   const code = (req.query.code || '').toUpperCase().trim();
@@ -111,44 +103,6 @@ app.post('/api/webhook/yukassa', async (req, res) => {
 });
 
 async function sendProgramEmail(to, programId, programTitle) {
-  const emailText = `Приветствую, воин!
-
-Спасибо за покупку персональной программы тренировок по армрестлингу. Ты получил план, который составлен на основе твоих целей, уровня подготовки и исходных данных. Это не шаблон — нагрузка, упражнения и структура подобраны так, чтобы дать тебе максимальный результат в твоей ситуации.
-
-Что внутри программы
-У тебя есть четко структурированный план: тренировочные дни, упражнения, подходы и повторения, а также логика прогрессии (повторы в запасе до отказа). Программа сочетает развитие силы, специфики армрестлинга и укрепление ключевых зон — кисти, предплечья, локтя и связок. Все сделано так, чтобы ты просто открывал план и понимал, что делать на каждой тренировке.
-
-Как работать по программе:
-Следуй плану без самодеятельности. Частота тренировок уже рассчитана — не нужно добавлять «от себя» лишние нагрузки, это чаще тормозит прогресс, чем ускоряет его.
-
-Подбирай рабочие веса так, чтобы последние повторения давались тяжело, исходя из пункта «повторы в запасе», но без потери техники. Если становится легко — постепенно увеличивай нагрузку. Если чувствуешь нестабильность или дискомфорт в суставах — снижай вес и усиливай контроль.
-
-Техника всегда важнее веса. Неправильное выполнение не только снижает эффективность, но и увеличивает риск травм, особенно в локте и запястье.
-
-Не игнорируй восстановление. Сон, питание и отдых между тренировками — это такая же часть прогресса, как и сами тренировки.
-
-Перед каждой тренировкой обязательно разминайся: кисти, локти, плечи. Это снизит риск травм и повысит качество работы.
-
-Следи за состоянием локтей и связок. В армрестлинге это слабое место. Если появляется боль — это сигнал снизить нагрузку, а не терпеть.
-
-Делай ставку на регулярность. Лучше стабильно идти по плану, чем периодически перегружаться и откатываться назад.
-
-Слушай тело. Прогресс — это баланс между нагрузкой и восстановлением, а не постоянная работа на пределе.
-
-Немного про настрой:
-Результат здесь не приходит быстро. Ты строишь силу, связки и технику постепенно. Если будешь системно выполнять программу и не выпадать из процесса — прогресс будет. Без скачков, но стабильно и надолго.
-
-Если появятся вопросы по программе или технике — можешь написать: тг @idalex.
-
-Рекомендую также фиксировать результаты: рабочие веса, самочувствие, ключевые упражнения. Это поможет видеть реальную динамику и понимать, что работает лучше всего.
-
-Работай спокойно, системно и с контролем. В армрестлинге выигрывает не тот, кто спешит, а тот, кто стабильно делает работу.
-
-Удачи в тренировках. Ваня Алексеев.
-
-Твоя программа: ${programTitle}
-Во вложении — полный 8-недельный план.`;
-
   const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -157,14 +111,10 @@ async function sendProgramEmail(to, programId, programTitle) {
     <div style="background: #141418; border-radius: 10px; padding: 32px;">
       <h1 style="color: #e63946; font-size: 24px; margin-bottom: 8px;">ALEKSEEV ARMWRESTLING</h1>
       <h2 style="color: #e8e8e8; font-size: 18px; margin-bottom: 24px;">Твоя программа готова! 💪</h2>
-
       <p style="color: #e8e8e8; line-height: 1.8; margin-bottom: 16px;">Приветствую, воин!</p>
-
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 16px;">Спасибо за покупку персональной программы тренировок по армрестлингу. Ты получил план, который составлен на основе твоих целей, уровня подготовки и исходных данных. Это не шаблон — нагрузка, упражнения и структура подобраны так, чтобы дать тебе максимальный результат в твоей ситуации.</p>
-
       <p style="color: #e8e8e8; font-weight: 600; margin-bottom: 8px;">Что внутри программы</p>
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 16px;">У тебя есть четко структурированный план: тренировочные дни, упражнения, подходы и повторения, а также логика прогрессии (повторы в запасе до отказа). Программа сочетает развитие силы, специфики армрестлинга и укрепление ключевых зон — кисти, предплечья, локтя и связок.</p>
-
       <p style="color: #e8e8e8; font-weight: 600; margin-bottom: 8px;">Как работать по программе:</p>
       <ul style="color: #9a9aaa; line-height: 2; margin-bottom: 16px; padding-left: 20px;">
         <li>Следуй плану без самодеятельности.</li>
@@ -176,43 +126,48 @@ async function sendProgramEmail(to, programId, programTitle) {
         <li>Делай ставку на регулярность.</li>
         <li>Слушай тело.</li>
       </ul>
-
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 24px;">Результат здесь не приходит быстро. Ты строишь силу, связки и технику постепенно. Если будешь системно выполнять программу — прогресс будет. Без скачков, но стабильно и надолго.</p>
-
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 24px;">Если появятся вопросы по программе или технике — можешь написать: тг <a href="https://t.me/idalex" style="color: #e63946;">@idalex</a></p>
-
       <div style="background: #1c1c22; border-radius: 8px; padding: 16px; margin: 24px 0; border-left: 3px solid #e63946;">
         <strong style="color: #e8e8e8;">Твоя программа:</strong>
         <p style="color: #f4a100; margin: 4px 0 0;">${programTitle}</p>
       </div>
-
       <p style="color: #9a9aaa; font-size: 14px; margin-bottom: 24px;">Во вложении — полный 8-недельный план тренировок.</p>
-
       <p style="color: #9a9aaa; line-height: 1.8;">Работай спокойно, системно и с контролем. В армрестлинге выигрывает не тот, кто спешит, а тот, кто стабильно делает работу.</p>
-
       <p style="color: #e8e8e8; margin-top: 24px; font-weight: 600;">Удачи в тренировках. Ваня Алексеев.</p>
-
       <hr style="border-color: #2a2a34; margin: 24px 0;">
       <p style="color: #9a9aaa; font-size: 12px; text-align: center;">ALEKSEEV ARMWRESTLING</p>
     </div>
   </div>
 </body>
-</html>
-  `;
+</html>`;
 
-  await transporter.sendMail({
-    from: `"Alekseev Armwrestling" <${EMAIL_FROM}>`,
-    to,
-    subject: '💪 Твоя персональная программа по армрестлингу',
-    text: emailText,
-    html: emailHtml,
-    attachments: [
-      {
-        filename: `${programId}.xlsx`,
-        path: path.join(__dirname, 'files', `${programId}.xlsx`),
+  // Читаем файл программы и конвертируем в base64
+  const filePath = path.join(__dirname, 'files', `${programId}.xlsx`);
+  const fileContent = fs.readFileSync(filePath).toString('base64');
+
+  // Отправляем через Brevo API
+  await axios.post(
+    'https://api.brevo.com/v3/smtp/email',
+    {
+      sender: { name: 'Alekseev Armwrestling', email: EMAIL_FROM },
+      to: [{ email: to }],
+      subject: '💪 Твоя персональная программа по армрестлингу',
+      htmlContent: emailHtml,
+      attachment: [
+        {
+          name: `${programId}.xlsx`,
+          content: fileContent,
+        },
+      ],
+    },
+    {
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'Content-Type': 'application/json',
       },
-    ],
-  });
+    }
+  );
 }
 
 app.get('/api/payment-status/:paymentId', async (req, res) => {
