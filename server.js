@@ -22,7 +22,7 @@ const BASE_PRICE = 1249;
 const YUKASSA_SHOP_ID  = process.env.YUKASSA_SHOP_ID;
 const YUKASSA_SECRET   = process.env.YUKASSA_SECRET;
 const EMAIL_FROM       = process.env.EMAIL_FROM;
-const BREVO_API_KEY    = process.env.BREVO_API_KEY;
+const RESEND_API_KEY   = process.env.RESEND_API_KEY;
 const SITE_URL         = process.env.SITE_URL || 'http://localhost:3000';
 
 app.get('/api/promo', (req, res) => {
@@ -146,24 +146,24 @@ async function sendProgramEmail(to, programId, programTitle) {
   const filePath = path.join(__dirname, 'files', `${programId}.xlsx`);
   const fileContent = fs.readFileSync(filePath).toString('base64');
 
-  // Отправляем через Brevo API
+  // Отправляем через Resend API
   await axios.post(
-    'https://api.brevo.com/v3/smtp/email',
+    'https://api.resend.com/emails',
     {
-      sender: { name: 'Alekseev Armwrestling', email: EMAIL_FROM },
-      to: [{ email: to }],
+      from: `Alekseev Armwrestling <${EMAIL_FROM}>`,
+      to: [to],
       subject: '💪 Твоя персональная программа по армрестлингу',
-      htmlContent: emailHtml,
-      attachment: [
+      html: emailHtml,
+      attachments: [
         {
-          name: `${programId}.xlsx`,
+          filename: `${programId}.xlsx`,
           content: fileContent,
         },
       ],
     },
     {
       headers: {
-        'api-key': BREVO_API_KEY,
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
         'Content-Type': 'application/json',
       },
     }
