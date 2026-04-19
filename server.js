@@ -128,6 +128,12 @@ async function sendProgramEmail(to, programId, programTitle) {
       </ul>
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 24px;">Результат здесь не приходит быстро. Ты строишь силу, связки и технику постепенно. Если будешь системно выполнять программу — прогресс будет. Без скачков, но стабильно и надолго.</p>
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 24px;">Если появятся вопросы по программе или технике — можешь написать: тг <a href="https://t.me/idalex" style="color: #e63946;">@idalex</a></p>
+
+      <div style="background: #1c1c22; border-radius: 8px; padding: 16px; margin: 24px 0; border-left: 3px solid #ff6b35;">
+        <p style="color: #e8e8e8; font-weight: 600; margin-bottom: 8px;">🎬 Техника упражнений</p>
+        <p style="color: #9a9aaa; font-size: 14px; margin-bottom: 12px;">Плейлист с видео по технике выполнения всех упражнений из программы:</p>
+        <a href="https://www.youtube.com/watch?v=Uj6OVT0yUgs&list=PLWM4w5Ccz3TGCTklLxL3p507doDRZ52ap" style="display: inline-block; padding: 10px 20px; background: linear-gradient(135deg, #e63946, #ff6b35); color: white; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">▶ Смотреть на YouTube</a>
+      </div>
       <div style="background: #1c1c22; border-radius: 8px; padding: 16px; margin: 24px 0; border-left: 3px solid #e63946;">
         <strong style="color: #e8e8e8;">Твоя программа:</strong>
         <p style="color: #f4a100; margin: 4px 0 0;">${programTitle}</p>
