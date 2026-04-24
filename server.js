@@ -78,7 +78,7 @@ app.post('/api/create-payment', async (req, res) => {
     Description: description,
     SignatureValue: signature,
     Email: email,
-    IsTest: 1,
+    IsTest: 0,
     Culture: 'ru',
     Encoding: 'utf-8',
   });
