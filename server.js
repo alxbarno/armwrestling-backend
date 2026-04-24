@@ -9,6 +9,7 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const PROMO_CODES = {
   'ARMFREE10':  10,
@@ -19,11 +20,19 @@ const PROMO_CODES = {
 
 const BASE_PRICE = 1249;
 
-const YUKASSA_SHOP_ID  = process.env.YUKASSA_SHOP_ID;
-const YUKASSA_SECRET   = process.env.YUKASSA_SECRET;
-const EMAIL_FROM       = process.env.EMAIL_FROM;
-const RESEND_API_KEY   = process.env.RESEND_API_KEY;
-const SITE_URL         = process.env.SITE_URL || 'http://localhost:3000';
+const ROBOKASSA_LOGIN = process.env.ROBOKASSA_LOGIN;
+const ROBOKASSA_PASS1 = process.env.ROBOKASSA_PASS1;
+const ROBOKASSA_PASS2 = process.env.ROBOKASSA_PASS2;
+const EMAIL_FROM      = process.env.EMAIL_FROM;
+const RESEND_API_KEY  = process.env.RESEND_API_KEY;
+const SITE_URL        = process.env.SITE_URL || 'http://localhost:3000';
+
+// Хранилище платежей в памяти
+const pendingPayments = {};
+
+function md5(str) {
+  return crypto.createHash('md5').update(str).digest('hex');
+}
 
 app.get('/api/promo', (req, res) => {
   const code = (req.query.code || '').toUpperCase().trim();
@@ -40,6 +49,7 @@ app.post('/api/create-payment', async (req, res) => {
   if (!email || !programId) {
     return res.status(400).json({ error: 'Укажите email и programId' });
   }
+
   let finalPrice = BASE_PRICE;
   let discountApplied = 0;
   if (promoCode) {
@@ -50,56 +60,65 @@ app.post('/api/create-payment', async (req, res) => {
       discountApplied = discount;
     }
   }
-  const idempotenceKey = crypto.randomUUID();
-  try {
-    const response = await axios.post(
-      'https://api.yookassa.ru/v3/payments',
-      {
-        amount: { value: finalPrice.toFixed(2), currency: 'RUB' },
-        confirmation: { type: 'redirect', return_url: `${SITE_URL}/payment-success` },
-        capture: true,
-        description: `Программа армрестлинга: ${programTitle}`,
-        metadata: { email, programId, programTitle, promoCode: promoCode || '', discountApplied },
-        receipt: {
-          customer: { email },
-          items: [{
-            description: `Программа армрестлинга: ${programTitle}`,
-            quantity: '1',
-            amount: { value: finalPrice.toFixed(2), currency: 'RUB' },
-            vat_code: 1,
-            payment_mode: 'full_payment',
-            payment_subject: 'commodity',
-          }],
-        },
-      },
-      {
-        auth: { username: YUKASSA_SHOP_ID, password: YUKASSA_SECRET },
-        headers: { 'Idempotence-Key': idempotenceKey, 'Content-Type': 'application/json' },
-      }
-    );
-    const { id, status, confirmation } = response.data;
-    res.json({ paymentId: id, status, confirmationUrl: confirmation.confirmation_url, finalPrice, discountApplied });
-  } catch (err) {
-    console.error('ЮKassa error:', err.response?.data || err.message);
-    res.status(500).json({ error: 'Ошибка создания платежа' });
-  }
+
+  const invId = Date.now();
+  const amount = finalPrice.toFixed(2);
+  const description = `Программа армрестлинга: ${programTitle}`;
+
+  // Сохраняем данные заказа
+  pendingPayments[invId] = { email, programId, programTitle, discountApplied };
+
+  // Подпись: MD5(login:amount:invId:pass1)
+  const signature = md5(`${ROBOKASSA_LOGIN}:${amount}:${invId}:${ROBOKASSA_PASS1}`);
+
+  const params = new URLSearchParams({
+    MerchantLogin: ROBOKASSA_LOGIN,
+    OutSum: amount,
+    InvId: invId,
+    Description: description,
+    SignatureValue: signature,
+    Email: email,
+    IsTest: 0,
+    Culture: 'ru',
+    Encoding: 'utf-8',
+  });
+
+  const confirmationUrl = `https://auth.robokassa.ru/Merchant/Index.aspx?${params.toString()}`;
+
+  res.json({ paymentId: invId, status: 'pending', confirmationUrl, finalPrice, discountApplied });
 });
 
-app.post('/api/webhook/yukassa', async (req, res) => {
-  const event = req.body;
-  if (event.event !== 'payment.succeeded') {
-    return res.json({ ok: true });
+// Webhook от Робокассы (ResultURL)
+app.post('/api/webhook/robokassa', async (req, res) => {
+  const { OutSum, InvId, SignatureValue } = req.body;
+
+  // Проверка подписи: MD5(outSum:invId:pass2)
+  const expectedSig = md5(`${OutSum}:${InvId}:${ROBOKASSA_PASS2}`).toUpperCase();
+  const receivedSig = (SignatureValue || '').toUpperCase();
+
+  if (expectedSig !== receivedSig) {
+    console.error(`❌ Неверная подпись webhook`);
+    return res.status(400).send('bad signature');
   }
-  const payment = event.object;
-  const { email, programId, programTitle } = payment.metadata;
+
+  const payment = pendingPayments[InvId];
+  if (!payment) {
+    console.error(`❌ Платёж не найден: InvId=${InvId}`);
+    return res.send(`OK${InvId}`);
+  }
+
+  const { email, programId, programTitle } = payment;
   console.log(`✅ Оплата получена: ${email} — ${programId}`);
+
   try {
     await sendProgramEmail(email, programId, programTitle);
     console.log(`📧 Письмо отправлено: ${email}`);
+    delete pendingPayments[InvId];
   } catch (err) {
     console.error('Ошибка отправки письма:', err.message);
   }
-  res.json({ ok: true });
+
+  res.send(`OK${InvId}`);
 });
 
 async function sendProgramEmail(to, programId, programTitle) {
@@ -128,7 +147,6 @@ async function sendProgramEmail(to, programId, programTitle) {
       </ul>
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 24px;">Результат здесь не приходит быстро. Ты строишь силу, связки и технику постепенно. Если будешь системно выполнять программу — прогресс будет. Без скачков, но стабильно и надолго.</p>
       <p style="color: #9a9aaa; line-height: 1.8; margin-bottom: 24px;">Если появятся вопросы по программе или технике — можешь написать: тг <a href="https://t.me/idalex" style="color: #e63946;">@idalex</a></p>
-
       <div style="background: #1c1c22; border-radius: 8px; padding: 16px; margin: 24px 0; border-left: 3px solid #ff6b35;">
         <p style="color: #e8e8e8; font-weight: 600; margin-bottom: 8px;">🎬 Техника упражнений</p>
         <p style="color: #9a9aaa; font-size: 14px; margin-bottom: 12px;">Плейлист с видео по технике выполнения всех упражнений из программы:</p>
@@ -148,11 +166,9 @@ async function sendProgramEmail(to, programId, programTitle) {
 </body>
 </html>`;
 
-  // Читаем файл программы и конвертируем в base64
   const filePath = path.join(__dirname, 'files', `${programId}.xlsx`);
   const fileContent = fs.readFileSync(filePath).toString('base64');
 
-  // Отправляем через Resend API
   await axios.post(
     'https://api.resend.com/emails',
     {
@@ -160,12 +176,7 @@ async function sendProgramEmail(to, programId, programTitle) {
       to: [to],
       subject: '💪 Твоя персональная программа по армрестлингу',
       html: emailHtml,
-      attachments: [
-        {
-          filename: `${programId}.xlsx`,
-          content: fileContent,
-        },
-      ],
+      attachments: [{ filename: `${programId}.xlsx`, content: fileContent }],
     },
     {
       headers: {
@@ -175,17 +186,5 @@ async function sendProgramEmail(to, programId, programTitle) {
     }
   );
 }
-
-app.get('/api/payment-status/:paymentId', async (req, res) => {
-  try {
-    const response = await axios.get(
-      `https://api.yookassa.ru/v3/payments/${req.params.paymentId}`,
-      { auth: { username: YUKASSA_SHOP_ID, password: YUKASSA_SECRET } }
-    );
-    res.json({ status: response.data.status });
-  } catch (err) {
-    res.status(500).json({ error: 'Ошибка проверки платежа' });
-  }
-});
 
 app.listen(4000, () => console.log('🚀 Сервер запущен на порту 4000'));
